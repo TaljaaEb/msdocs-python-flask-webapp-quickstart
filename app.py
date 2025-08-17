@@ -1,38 +1,9 @@
-# a_sql_monitor.py
-#from http.server import BaseHTTPRequestHandler, HTTPServer
-#
-## --- DATA ---
-#transactions = [
-#    "101 18V Cordless Drill 2 89.99",
-#    "102 6-inch Wood Clamp 4 12.50",
-#    "103 Carpenter's Hammer 1 19.99"
-#]
-#
-#class Handler(BaseHTTPRequestHandler):
-#    def do_GET(self):
-#        if self.path == "/transactions":
-#            self.send_response(200)
-#            self.send_header("Content-type", "text/plain")
-#            self.end_headers()
-#            for t in transactions:
-#                self.wfile.write(f"<item>{t}</item>\n".encode())
-#        else:
-#            self.send_response(404)
-#            self.end_headers()
-#            self.wfile.write(b"Not Found")
-#
-#def run(server_class=HTTPServer, handler_class=Handler, host="0.0.0.0", port=8000):
-#    server_address = (host, port)
-#    httpd = server_class(server_address, handler_class)
-#    print(f"[A] Serving transactions at http://{host}:{port}/transactions")
-#    httpd.serve_forever()
-#
-#if __name__ == "__main__":
-#    run()
-import os
-from flask import Flask, redirect, render_template, request, send_from_directory, url_for, Response
+# merged_app.py
 
-app = Flask(__name__)
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from flask import Flask, redirect, render_template, request, send_from_directory, url_for
 
 # --- DATA ---
 transactions = [
@@ -41,7 +12,32 @@ transactions = [
     "103 Carpenter's Hammer 1 19.99"
 ]
 
-# --- ROUTES ---
+# -------------------------
+# Legacy HTTPServer Handler
+# -------------------------
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/transactions":
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            for t in transactions:
+                self.wfile.write(f"<item>{t}</item>\n".encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b"Not Found")
+
+def run_http_server(host="0.0.0.0", port=8081):
+    server_address = (host, port)
+    httpd = HTTPServer(server_address, Handler)
+    print(f"[A] Legacy server at http://{host}:{port}/transactions")
+    httpd.serve_forever()
+
+# -------------------------
+# Flask App
+# -------------------------
+app = Flask(__name__)
 
 @app.route('/')
 def index():
@@ -56,24 +52,30 @@ def favicon():
 @app.route('/hello', methods=['POST'])
 def hello():
     name = request.form.get('name')
-
     if name:
         print(f'Request for hello page received with name={name}')
         return render_template('hello.html', name=name)
     else:
-        print('Request for hello page received with no name or blank name -- redirecting')
+        print('Request for hello page received with no name -- redirecting')
         return redirect(url_for('index'))
 
+# -------------------------
+# Flask transactions route
+# -------------------------
 @app.route('/transactions', methods=['GET'])
 def get_transactions():
-    # Serve transactions in simple XML-like format (similar to original)
-    print("Request for transactions list received")
-    output = "".join(f"<item>{t}</item>\n" for t in transactions)
-    return Response(output, mimetype="text/plain")
+    global Handler  # <-- equivalent to exposing legacy do_GET
+    return "\n".join(f"<item>{t}</item>" for t in transactions)
 
-
+# -------------------------
+# Runner
+# -------------------------
 if __name__ == '__main__':
-    # Flask defaults to 127.0.0.1:5000, override for external binding if needed
+    # Start legacy HTTP server in background thread
+    t = threading.Thread(target=run_http_server, daemon=True)
+    t.start()
+
+    # Start Flask server
+    print("[B] Flask server at http://127.0.0.1:5000/")
     #app.run(host="0.0.0.0", port=5000)
     app.run()
-
